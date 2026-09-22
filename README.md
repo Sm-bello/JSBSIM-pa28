@@ -1,3 +1,5 @@
+<img width="1536" height="1024" alt="ChatGPT Image Sep 22, 2026, 09_39_57 AM" src="https://github.com/user-attachments/assets/057c2f70-65e1-4ced-aa52-effb6d3ae3d1" />
+
 # PHI-SPIKE — Piper Cherokee/Warrior (PA-28)
 
 ## What this is
