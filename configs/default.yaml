@@ -1,0 +1,82 @@
+# PHI-SPIKE default configuration
+# Targets are experimental thresholds, not claimed measured results.
+
+project:
+  name: PHI-SPIKE
+  version: "0.1.0"
+  description: "Physics-Informed Spiking Neural Network for Aircraft Health Monitoring"
+  trl_target: "TRL-4 / TRL-5-oriented software demonstrator"
+
+simulation:
+  aircraft: "c172x"          # JSBSim aircraft model
+  dt: 0.02                   # 50 Hz telemetry
+  duration_s: 120.0
+  seed: 42
+
+faults:
+  classes:
+    - healthy
+    - sensor_bias
+    - sensor_drift
+    - sensor_stuck
+    - sensor_noise
+    - actuator_degradation
+    - engine_performance_loss
+    - control_surface_lag
+    - fuel_flow_anomaly
+    - vibration_anomaly
+  severity_levels: [0.1, 0.25, 0.5, 0.75]
+  injection_start_fraction: 0.3   # inject after 30% of trajectory
+
+physics:
+  residual_weight: 0.3
+  temporal_weight: 0.1
+  sparsity_weight: 0.05
+  bound_violation_threshold: 0.01
+
+encoding:
+  method: "hybrid"           # rate | temporal | delta | population | hybrid
+  rate_max_hz: 200.0
+  temporal_window_ms: 50.0
+  n_population: 8
+
+snn:
+  n_inputs: 12               # number of telemetry channels
+  n_hidden: 128
+  n_outputs: 10              # fault classes
+  tau_mem: 20.0              # ms
+  tau_syn: 5.0
+  v_th: 1.0
+  physics_conditioning: true
+  alpha_physics: 0.2         # strength of residual on membrane
+
+training:
+  epochs: 30
+  batch_size: 32
+  lr: 0.001
+  weight_decay: 1.0e-5
+  seeds: [0, 1, 2, 3, 4]
+  device: "cpu"              # cpu for edge realism; cuda if available
+
+targets:                     # acceptance thresholds (not measured claims)
+  f1: 0.90
+  recall: 0.90
+  auroc: 0.95
+  false_alarm_rate: 0.05
+  detection_delay_ms: 100
+  spike_sparsity: 0.90
+  latency_ms: 10.0
+  physics_residual_reduction: 0.30
+
+edge:
+  batch_size: 1
+  streaming: true
+  max_cpu_percent: 70
+  memory_limit_mb: 512
+  inference_deadline_ms: 20
+
+paths:
+  data_dir: "datasets"
+  model_dir: "models"
+  experiment_dir: "experiments"
+  log_dir: "logs"

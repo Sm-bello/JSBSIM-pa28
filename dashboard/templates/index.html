@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PHI-SPIKE — Live Command Center</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --panel: #101627;
+    --border: #1e2740;
+    --text: #e6ebf5;
+    --muted: #7a89ad;
+    --accent: #4da3ff;
+    --good: #35d488;
+    --warn: #f5a623;
+    --bad: #ff5470;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    padding: 16px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 12px; }
+  #conn {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  #conn.ok { color: var(--good); border-color: var(--good); }
+  #conn.bad { color: var(--bad); border-color: var(--bad); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin: 0 0 8px 0;
+  }
+  .chan { margin-bottom: 6px; }
+  .chan .row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .chan canvas { width: 100%; height: 28px; display: block; }
+  .diag-fault { font-size: 18px; font-weight: 600; margin: 4px 0; }
+  .diag-fault.healthy { color: var(--good); }
+  .diag-fault.fault { color: var(--bad); }
+  .metric { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .metric:last-child { border-bottom: none; }
+  .metric b { color: var(--text); }
+  .health-score { font-size: 42px; font-weight: 700; }
+  .health-score.good { color: var(--good); }
+  .health-score.warn { color: var(--warn); }
+  .health-score.bad { color: var(--bad); }
+  #raster { width: 100%; height: 120px; background: #060912; border-radius: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>PHI<span>-SPIKE</span> — Live Command Center</h1>
+    <div class="sub">Physics-informed spiking intelligence · aircraft telemetry health monitoring</div>
+  </div>
+  <div id="conn" class="bad">connecting…</div>
+</header>
+
+<div class="grid">
+
+  <div class="panel" style="grid-column: span 2;">
+    <h2>Live Telemetry</h2>
+    <div id="telemetry"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Diagnosis</h2>
+    <div id="fault" class="diag-fault healthy">—</div>
+    <div class="metric"><span>Confidence</span><b id="conf">—</b></div>
+    <div class="metric"><span>True label (sim ground truth)</span><b id="truelabel">—</b></div>
+    <div class="metric"><span>Mission time</span><b id="misstime">—</b></div>
+    <div class="metric"><span>Health score</span><b><span id="health" class="health-score good">100</span>/100</b></div>
+  </div>
+
+  <div class="panel">
+    <h2>Model Performance (Live)</h2>
+    <div class="metric"><span>Inference latency</span><b id="lat">—</b></div>
+    <div class="metric"><span>Avg latency (rolling)</span><b id="avglat">—</b></div>
+    <div class="metric"><span>Spike rate</span><b id="sprate">—</b></div>
+    <div class="metric"><span>Sparsity</span><b id="sparsity">—</b></div>
+    <div class="metric"><span>Status</span><b id="status">—</b></div>
+  </div>
+
+  <div class="panel" style="grid-column: span 2;">
+    <h2>Physics Residual (r = x_measured − f(x,u,θ))</h2>
+    <div id="residual"></div>
+  </div>
+
+  <div class="panel" style="grid-column: 1 / -1;">
+    <h2>Spike Raster (latest inference window)</h2>
+    <canvas id="raster"></canvas>
+  </div>
+
+</div>
+
+<script>
+const CHANNEL_COLORS = ["#ff5470","#f5a623","#35d488","#4da3ff","#a26dff","#ff8bd6","#4dd8ff","#c9e26e","#ff9d5c","#7a89ad","#e6ebf5","#ffd166"];
+
+let channelEls = {};   // channel -> {canvas, row}
+let channels = [];
+
+function buildChannelRows(container, prefix) {
+  container.innerHTML = "";
+  const map = {};
+  channels.forEach((ch, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "chan";
+    wrap.innerHTML = `<div class="row"><span>${ch}</span><span id="${prefix}-${i}-v">—</span></div><canvas id="${prefix}-${i}-c"></canvas>`;
+    container.appendChild(wrap);
+    map[ch] = { canvas: wrap.querySelector("canvas"), valueEl: wrap.querySelector(`#${prefix}-${i}-v`), color: CHANNEL_COLORS[i % CHANNEL_COLORS.length] };
+  });
+  return map;
+}
+
+function drawSparkline(canvas, points, color) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 260, h = canvas.clientHeight || 28;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!points || points.length < 2) return;
+  const vals = points.map(p => p.v);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = (i / (points.length - 1)) * w;
+    const y = h - ((p.v - min) / range) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawRaster(canvas, raster, nChannels) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 800, h = canvas.clientHeight || 120;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!raster || raster.length === 0) return;
+  const rowH = h / Math.max(1, nChannels);
+  ctx.fillStyle = "#4da3ff";
+  raster.forEach((ev, i) => {
+    const x = (i / raster.length) * w;
+    const y = (ev.ch % nChannels) * rowH;
+    ctx.fillRect(x, y, 2, Math.max(2, rowH - 2));
+  });
+}
+
+let telemetryMap = null, residualMap = null;
+
+async function poll() {
+  try {
+    const res = await fetch("/api/state");
+    const s = await res.json();
+
+    const connEl = document.getElementById("conn");
+    connEl.textContent = s.connected ? "connected — " + s.status : s.status;
+    connEl.className = s.connected ? "ok" : "bad";
+
+    if (!channels.length && s.telemetry_channels) {
+      channels = s.telemetry_channels;
+      telemetryMap = buildChannelRows(document.getElementById("telemetry"), "tel");
+      residualMap = buildChannelRows(document.getElementById("residual"), "res");
+    }
+
+    channels.forEach(ch => {
+      const th = s.telemetry_history[ch] || [];
+      if (telemetryMap[ch]) {
+        drawSparkline(telemetryMap[ch].canvas, th, telemetryMap[ch].color);
+        if (th.length) telemetryMap[ch].valueEl.textContent = th[th.length - 1].v.toFixed(2);
+      }
+      const rh = s.residual_history[ch] || [];
+      if (residualMap[ch]) {
+        drawSparkline(residualMap[ch].canvas, rh, residualMap[ch].color);
+        if (rh.length) residualMap[ch].valueEl.textContent = rh[rh.length - 1].v.toFixed(3);
+      }
+    });
+
+    drawRaster(document.getElementById("raster"), s.spike_raster, channels.length || 12);
+
+    const isHealthy = s.fault_class === "healthy";
+    const faultEl = document.getElementById("fault");
+    faultEl.textContent = isHealthy ? "NOMINAL" : s.fault_class.toUpperCase().replaceAll("_", " ");
+    faultEl.className = "diag-fault " + (isHealthy ? "healthy" : "fault");
+
+    document.getElementById("conf").textContent = (s.fault_confidence * 100).toFixed(1) + "%";
+    document.getElementById("truelabel").textContent = s.true_fault;
+    document.getElementById("misstime").textContent = s.mission_time_s.toFixed(1) + " s";
+
+    const healthEl = document.getElementById("health");
+    healthEl.textContent = s.health_score;
+    healthEl.className = "health-score " + (s.health_score >= 80 ? "good" : s.health_score >= 50 ? "warn" : "bad");
+
+    document.getElementById("lat").textContent = s.latency_ms.toFixed(2) + " ms";
+    document.getElementById("avglat").textContent = s.avg_latency_ms.toFixed(2) + " ms";
+    document.getElementById("sprate").textContent = s.spike_rate_hz.toFixed(0) + " Hz";
+    document.getElementById("sparsity").textContent = s.sparsity_pct.toFixed(1) + " %";
+    document.getElementById("status").textContent = s.status;
+  } catch (e) {
+    document.getElementById("conn").textContent = "disconnected";
+    document.getElementById("conn").className = "bad";
+  }
+}
+
+setInterval(poll, 400);
+poll();
+</script>
+</body>
+</html>

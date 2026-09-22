@@ -1,0 +1,118 @@
+# PHI-SPIKE Paper Campaign Configuration
+# Full experimental campaign for Tsinghua / Beihang Q1-oriented submission.
+# Prototype 30-epoch runs are preserved under experiments/prototype_baseline/.
+# This config drives the scientific campaign (do NOT overwrite prototype results).
+
+project:
+  name: PHI-SPIKE
+  version: "0.2.0-campaign"
+  description: "Physics-Informed Spiking Neural Network for Aircraft Health Monitoring — Full Campaign"
+  target: "Q1 paper experimental matrix"
+
+simulation:
+  aircraft: "c172x"
+  aircraft_alt: "f16"          # for cross-aircraft generalisation
+  dt: 0.02
+  duration_s: 80.0
+  seed: 42
+  regimes:
+    - cruise
+    - climb
+    - descent
+    - mild_maneuver
+    - aggressive_maneuver
+
+faults:
+  classes:
+    - healthy
+    - sensor_bias
+    - sensor_drift
+    - sensor_stuck
+    - sensor_noise
+    - actuator_degradation
+    - engine_performance_loss
+    - control_surface_lag
+    - fuel_flow_anomaly
+    - vibration_anomaly
+  severity_levels: [0.10, 0.25, 0.50, 0.75, 1.00]
+  # Randomised onset — critical fix vs fixed 0.3
+  onset_fraction_range: [0.15, 0.80]
+  n_per_class_per_severity: 3
+
+physics:
+  residual_mode: "normalized_linear"   # normalized_linear | jsbsim_proxy | learned
+  residual_weight: 0.25
+  temporal_weight: 0.10
+  sparsity_weight: 0.05
+  bound_violation_threshold: 0.01
+  learnable_gate: true
+  channel_normalize: true
+
+encoding:
+  method: "hybrid"
+  rate_max_hz: 200.0
+  temporal_window_ms: 50.0
+  n_population: 8
+
+snn:
+  n_inputs: 12
+  n_hidden: 128
+  n_outputs: 10
+  tau_mem: 20.0
+  tau_syn: 5.0
+  v_th: 1.0
+  physics_conditioning: true
+  alpha_physics: 0.2          # initial; becomes learnable when learnable_gate=true
+
+training:
+  epochs: 40
+  batch_size: 32
+  lr: 0.001
+  weight_decay: 1.0e-5
+  seeds: [0, 1, 2, 3, 4]
+  device: "cpu"
+  sequence_len: 80
+  stride: 40
+  n_clean_trajectories: 40
+
+ablation:
+  variants:
+    - vanilla_snn
+    - snn_physics_loss
+    - snn_membrane_conditioning
+    - snn_temporal_physics
+    - full_phi_spike
+
+robustness:
+  noise_levels: [0.0, 0.05, 0.10, 0.20, 0.30]
+  dropout_rates: [0.0, 0.05, 0.10, 0.20, 0.30, 0.50]
+  packet_loss: [0.0, 0.05, 0.10, 0.20, 0.30]
+  severity_sweep: [0.10, 0.25, 0.50, 0.75, 1.00]
+  onset_sweep: [0.15, 0.30, 0.50, 0.70, 0.80]
+
+edge:
+  batch_size: 1
+  streaming: true
+  max_cpu_percent: 70
+  memory_limit_mb: 512
+  inference_deadline_ms: 20
+
+paths:
+  data_dir: "datasets/full"
+  model_dir: "models"
+  experiment_dir: "experiments/full_campaign"
+  ablation_dir: "experiments/ablations"
+  robustness_dir: "experiments/robustness"
+  figure_dir: "experiments/figures"
+  log_dir: "logs"
+  prototype_dir: "experiments/prototype_baseline"
+
+targets:
+  # Aspirational — not claimed results
+  f1: 0.75
+  recall: 0.80
+  auroc: 0.90
+  false_alarm_rate: 0.08
+  detection_delay_ms: 150
+  spike_sparsity: 0.85
+  latency_ms: 15.0

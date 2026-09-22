@@ -1,0 +1,23 @@
+{
+  "JSBSim aircraft telemetry": {
+    "status": "PASS"
+  },
+  "Physics residual engine": {
+    "status": "PASS"
+  },
+  "Fault injection laboratory": {
+    "status": "PASS"
+  },
+  "Spike encoder": {
+    "status": "PASS"
+  },
+  "Vanilla SNN forward": {
+    "status": "PASS"
+  },
+  "PHI-SPIKE forward + loss": {
+    "status": "PASS"
+  },
+  "Edge streaming pipeline": {
+    "status": "PASS"
+  }
+}

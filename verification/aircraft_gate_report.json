@@ -1,0 +1,33 @@
+{
+  "twin_piston_generalization": {
+    "aircraft": "twin_piston_generalization",
+    "candidates_tried": [
+      "Baron58",
+      "c310"
+    ],
+    "status": "PASS",
+    "checks": {
+      "load_model": "PASS",
+      "trajectory_generation": "PASS",
+      "physics_residual": "PASS",
+      "fault_injection_and_encoding": "PASS"
+    },
+    "resolved_model": "c310",
+    "samples": 300,
+    "channels": [
+      "airspeed_kt",
+      "altitude_ft",
+      "pitch_deg",
+      "roll_deg",
+      "yaw_rate_dps",
+      "engine_rpm",
+      "throttle",
+      "fuel_flow",
+      "oil_pressure",
+      "oil_temp",
+      "egt",
+      "vibration_proxy"
+    ],
+    "residual_norm_mean": 0.08123025059440324
+  }
+}
